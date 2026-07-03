@@ -1,0 +1,70 @@
+id: U-MINIBATT
+name: Mini-Batterie-Extender
+version: "1.0"
+domain: construction_machinery
+status: draft
+description: >
+  Kleines Batterie-Puffersystem (20-50 kWh, baureihenabhaengig) als Erweiterung
+  zur Kabelektrifizierung. Ermoeglicht kurze kabelfreie Bewegungen und erweitert
+  den zulaeessigen Aktionsradius auf ca. 350 m/h. Kein eigenstaendiges Upgrade;
+  ausschliesslich in Kombination mit U-ELEC-CABLE sinnvoll.
+
+components:
+  - LFP-Batteriepaket (20-50 kWh, baureihen- und einsatzabhaengig)
+  - Battery Management System (BMS)
+  - DC/DC-Wandler fuer Zwischenkreisanbindung
+  - Thermomanagement (passiv oder aktiv, je nach Kapazitaet)
+
+interfaces:
+  - "Electrical: DC-Zwischenkreis-Anbindung an U-ELEC-CABLE Umrichter"
+  - "Mechanical: Gehaeuseintegration (Gegengewichtposition moeglich)"
+  - "Control: BMS-Kommunikation ueber CAN-Bus"
+
+performance_delta:
+  effective_range: "+bis 350 m/h (Paket mit U-ELEC-CABLE)"
+  buffer_autonomy: "15-30 Minuten Autonomiebetrieb (abhaengig von Kapazitaet)"
+  weight_delta: "+200-600 kg (je nach Kapazitaet)"
+
+component_cost_eur: 18000.0
+installation_cost_eur: 1800.0
+disposal_cost_eur: 2000.0
+
+feasibility_gate:
+  condition_description: "Aktionsradius <= 350 m/h (Grenzfall-Erweiterung fuer Paket mit U-ELEC-CABLE)"
+  dimension_ref: hourly_distance
+  threshold: 350.0
+  operator: "<="
+
+savings_mechanism:
+  formula: "0.0"
+  factors: []
+  unit: EUR/year
+
+requires:
+  - U-ELEC-CABLE
+excludes: []
+synergies:
+  - with_upgrade: U-ELEC-CABLE
+    type: enabling
+    description: >
+      U-MINIBATT ist nur in Verbindung mit U-ELEC-CABLE wirksam.
+      Das Paket ermoeglicht die Elektrifizierung von Grenzfall-Maschinen
+      mit 200-350 m/h Aktionsradius. Einsparungen werden dem Gesamtpaket
+      und nicht U-MINIBATT allein zugerechnet.
+
+data_dimensions:
+  - name: hourly_distance
+    kind: EC
+    unit: m/h
+    resolution: L3
+    description: >
+      Mittlerer Aktionsradius (gleiche Soll-Groesse wie U-ELEC-CABLE Gate).
+      Geteilte Dimension zwischen Paket-Partnern.
+
+source: Konzeptentwurf KIT wbk / Masterarbeit Mika F.
+confidence: 0.5
+date: "2025-06-01"
+notes: >
+  Ergaenzungsupgrade zu U-ELEC-CABLE. Keine eigene Sparlogik (Einsparungen
+  entstehen im Paket). Kostangaben vorlaeufig; keine eigene Instanz-Evaluierung.
+  Offene Frage: Additiver oder nicht-additiver Synergieterm mit U-ELEC-CABLE?

@@ -1,0 +1,22 @@
+id: "U-ELEC-CABLE::EW100"
+family_id: U-ELEC-CABLE
+machine_model: EW100
+overrides:
+  component_cost_eur: 28000.0
+  installation_cost_eur: 2200.0
+  disposal_cost_eur: 550.0
+  description: >
+    Elektrifizierung des Wacker Neuson EW100 Mobilbagger (55 kW Motor, 10t).
+    Mittlere Baggerklasse; hoehere Investitionskosten, aber deutlich groessere
+    Einsparungen durch hoeheren Kraftstoffverbrauch. Typisch: Tiefbau, Rohrleitungsbau.
+  confidence: 0.65
+instance_values:
+  fuel_rate_l_h: 8.5
+  engine_kw: 55.0
+  machine_weight_t: 10.0
+notes: >
+  Wacker Neuson EW100, 10t Radmobilbagger.
+  Verbrauch 8.5 L/h bei Nennlast (Schaetzwert; Herstellerdaten aussstehend).
+  Aktionsradius stark nutzungsabhaengig; Mobilbagger fahren mehr als Kettenbagger.
+  Beispielrechnung: 1800 h * 8.5 L/h * (1.60 - 0.60) EUR/L = 15300 EUR/Jahr.
+  Payback: (28000 + 2200) / 15300 = 1.97 Jahre (wenn Feasibility Gate erfuellt).

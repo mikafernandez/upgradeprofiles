@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.python-version
+
+# Laufzeit-generierte Dateien
+data/samples/
+data/mappings/
+
+# Lokale Entwicklungsartefakte
+.env
+test_smoke.py

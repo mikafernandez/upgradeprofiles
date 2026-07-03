@@ -1,0 +1,15 @@
+# Globale Marktparameter — upgrade-unabhaengig
+# Aenderungen hier wirken sofort auf alle Auswertungen.
+# Quelle: Brancheninformationen / Energieversorger (Stand 2025)
+
+diesel_price_eur_l: 1.60
+electricity_equiv_eur_l: 0.60
+co2_price_eur_t: 65.0
+working_days_per_year: 220
+co2_factor_diesel_kg_l: 2.65
+
+# Erlaeuterungen:
+# electricity_equiv_eur_l: Umrechnung Strompreis auf Diesel-Aequivalent
+#   Annahme: 10 kWh/L Diesel, Strompreis 0.20 EUR/kWh -> 0.20*10/? = Rechnung anpassen
+#   Direkt gesetzt als EUR-je-Liter-Aequivalent fuer Formelverwendung.
+# co2_price_eur_t: ETS / CO2-Zertifikatspreis (variabel; Sensitivitaetsanalyse empfohlen)

@@ -1,0 +1,22 @@
+id: "U-ELEC-CABLE::EZ17"
+family_id: U-ELEC-CABLE
+machine_model: EZ17
+overrides:
+  component_cost_eur: 15000.0
+  installation_cost_eur: 1200.0
+  disposal_cost_eur: 400.0
+  description: >
+    Elektrifizierung des Wacker Neuson EZ17 Kettenbagger (13.8 kW Dieselmotor, 1.7t).
+    Kleinstbagger-Klasse; geringer Energiebedarf ermoeoelicht guenstige Komponentenkosten.
+    Einsatzprofil: Hallenbau, Kanalarbeiten, innerstaeodtische Baustellen.
+  confidence: 0.75
+instance_values:
+  fuel_rate_l_h: 2.2
+  engine_kw: 13.8
+  machine_weight_t: 1.7
+notes: >
+  Wacker Neuson EZ17, 1.7t Kettenbagger.
+  Verbrauch 2.2 L/h bei Nennlast (Herstellerangabe).
+  Typisches Einsatzprofil: 1500 h/Jahr, geringer Aktionsradius (Grubenaushub, Grabarbeiten).
+  Beispielrechnung: 1500 h * 2.2 L/h * (1.60 - 0.60) EUR/L = 3300 EUR/Jahr Einsparung.
+  Payback: (15000 + 1200) / 3300 = 4.9 Jahre.
