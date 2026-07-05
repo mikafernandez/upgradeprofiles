@@ -1,8 +1,9 @@
 from __future__ import annotations
+from enum import Enum
 from typing import Any, Literal
 from pathlib import Path
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class DataDimension(BaseModel):
@@ -38,6 +39,72 @@ class Synergy(BaseModel):
     description: str = ""
 
 
+class AggregationOperator(str, Enum):
+    # Grabisch et al. (2009), Aggregation Functions, als Taxonomie-Anker für additive
+    # vs. boolesche vs. gewichtete Kombination
+    SUM = "sum"
+    AND_GATE = "and_gate"
+    PROPORTIONAL_SCALE = "proportional_scale"
+
+
+# yaml.dump (Standard-Dumper, siehe save_profile_yaml) findet ohne diesen Representer keine
+# passende Serialisierung fuer die Enum-Instanz und faellt auf ein !!python/object-Tag zurueck.
+yaml.add_representer(AggregationOperator, lambda dumper, data: dumper.represent_str(data.value))
+
+
+class BucketNode(BaseModel):
+    """
+    MECE-Bucket-Baum: Blatt traegt eine SavingsMechanism-Formel (wie bisher),
+    Ast kombiniert Kinder ueber einen AggregationOperator. Ein bestehendes
+    flaches savings_mechanism (formula/factors/unit) wird beim Laden
+    transparent als triviales Ein-Blatt interpretiert (siehe _wrap_legacy_shape).
+    """
+    name: str
+    node_type: Literal["leaf", "branch"]
+    mechanism: SavingsMechanism | None = None      # nur bei leaf
+    operator: AggregationOperator | None = None    # nur bei branch
+    children: list[BucketNode] = []                # nur bei branch
+
+    @model_validator(mode="before")
+    @classmethod
+    def _wrap_legacy_shape(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "node_type" not in data and "formula" in data:
+            return {
+                "name": data.get("name", "root"),
+                "node_type": "leaf",
+                "mechanism": {
+                    "formula": data["formula"],
+                    "factors": data.get("factors", []),
+                    "unit": data.get("unit", "EUR/year"),
+                },
+            }
+        return data
+
+    @model_validator(mode="after")
+    def _check_shape(self) -> "BucketNode":
+        if self.node_type == "leaf" and (self.mechanism is None or self.children or self.operator is not None):
+            raise ValueError("BucketNode leaf benoetigt mechanism, darf keine children/operator haben")
+        if self.node_type == "branch" and (self.operator is None or self.mechanism is not None):
+            raise ValueError("BucketNode branch benoetigt operator+children, darf kein mechanism haben")
+        return self
+
+
+BucketNode.model_rebuild()
+
+
+def bucket_leaf_count(node: BucketNode) -> int:
+    if node.node_type == "leaf":
+        return 1
+    return sum(bucket_leaf_count(c) for c in node.children)
+
+
+def bucket_display_formula(node: BucketNode) -> str:
+    """Kurzdarstellung fuer UI-Stellen, die frueher direkt savings_mechanism.formula gelesen haben."""
+    if node.node_type == "leaf":
+        return node.mechanism.formula
+    return f"[Bucket-Baum, {bucket_leaf_count(node)} Blaetter, Operator {node.operator.value}]"
+
+
 class UpgradeProfile(BaseModel):
     """
     Familie-Profil: Generische, baureihenunabhaengige Beschreibung eines Upgrade-Mechanismus.
@@ -63,7 +130,7 @@ class UpgradeProfile(BaseModel):
     # D: Feasibility Gate
     feasibility_gate: FeasibilityGate
     # E: Savings Mechanism
-    savings_mechanism: SavingsMechanism
+    savings_mechanism: BucketNode
     # F: Dependencies
     requires: list[str] = []
     excludes: list[str] = []

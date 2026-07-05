@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import streamlit as st
 from utils.generate_sample import ensure_sample_exists
-from schemas.upgrade_profile import load_families, load_instances
+from schemas.upgrade_profile import load_families, load_instances, bucket_display_formula
 
 st.set_page_config(
     page_title="Upgrade-Steckbrief Tool",
@@ -143,7 +143,7 @@ else:
 
             st.write(f"**Status:** <span class='{badge_class}'>{fam.status}</span>", unsafe_allow_html=True)
             st.write(f"**Feasibility Gate:** {fam.feasibility_gate.condition_description}")
-            st.write(f"**Sparformel:** `{fam.savings_mechanism.formula}`")
+            st.write(f"**Sparformel:** `{bucket_display_formula(fam.savings_mechanism)}`")
 
             if instanzen:
                 st.write(f"**Instanzen:** {', '.join(f'`{i}`' for i in instanzen)}")

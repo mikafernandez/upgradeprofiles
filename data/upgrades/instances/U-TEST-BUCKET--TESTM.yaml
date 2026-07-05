@@ -1,0 +1,8 @@
+id: "U-TEST-BUCKET::TESTM"
+family_id: U-TEST-BUCKET
+machine_model: TESTM
+overrides: {}
+instance_values: {}
+notes: >
+  Test-Instanz ohne Overrides, ausschliesslich fuer die Bucket-Baum-Regressionspruefung
+  in test_smoke.py.

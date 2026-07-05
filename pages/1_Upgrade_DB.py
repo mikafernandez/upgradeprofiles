@@ -6,9 +6,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import streamlit as st
 import yaml
 from schemas.upgrade_profile import (
-    UpgradeProfile, UpgradeInstance, FeasibilityGate, SavingsMechanism,
+    UpgradeProfile, UpgradeInstance, FeasibilityGate, SavingsMechanism, BucketNode,
     load_families, load_instances, instance_diff, save_profile_yaml, save_instance_yaml,
+    bucket_display_formula,
 )
+from utils.bucket_tree_ui import render_bucket_tree_readonly, render_bucket_assignment_form
 
 st.set_page_config(page_title="Upgrade DB", layout="wide")
 
@@ -30,7 +32,7 @@ st.markdown("""
 st.title("Upgrade-Steckbrief Datenbank")
 st.caption("Familie-Steckbriefe definieren den Mechanismus. Instanzen konkretisieren ihn baureihenspezifisch.")
 
-tab_fam, tab_inst, tab_new = st.tabs(["Familien", "Instanzen", "Neu anlegen"])
+tab_fam, tab_inst, tab_tree, tab_new = st.tabs(["Familien", "Instanzen", "Bucket-Baum", "Neu anlegen"])
 
 
 def render_dimensions(dimensions):
@@ -82,9 +84,14 @@ def render_family(fam: UpgradeProfile):
         )
 
         st.markdown("**Block E · Savings Mechanism**")
-        st.code(fam.savings_mechanism.formula, language="python")
-        for factor in fam.savings_mechanism.factors:
-            st.write(f"- `{factor.name}` ({factor.dimension_ref}): {factor.description}")
+        sm = fam.savings_mechanism
+        if sm.node_type == "leaf":
+            st.code(sm.mechanism.formula, language="python")
+            for factor in sm.mechanism.factors:
+                st.write(f"- `{factor.name}` ({factor.dimension_ref}): {factor.description}")
+        else:
+            st.code(bucket_display_formula(sm), language="python")
+            st.caption("Bucket-Baum — Struktur bearbeitbar im Tab 'Bucket-Baum'.")
 
     with right:
         st.markdown("**Block F · Dependencies**")
@@ -163,6 +170,27 @@ with tab_inst:
         if inst.notes:
             st.markdown("**Notizen**")
             st.write(inst.notes.strip())
+
+
+# ── Tab: Bucket-Baum ──────────────────────────────────────────────────────────
+with tab_tree:
+    families = load_families()
+    if not families:
+        st.info("Noch keine Familie-Profile. Lege das erste Upgrade unter 'Neu anlegen' an.")
+    else:
+        selected_tree_fam = st.selectbox(
+            "Familie auswaehlen",
+            list(families.keys()),
+            format_func=lambda k: f"{families[k].name} ({k})",
+            key="tree_fam_select",
+        )
+        tree_fam = families[selected_tree_fam]
+
+        st.markdown("**Struktur (read-only)**")
+        render_bucket_tree_readonly(tree_fam.savings_mechanism)
+
+        st.divider()
+        render_bucket_assignment_form(tree_fam, key_prefix=f"tree_{selected_tree_fam}")
 
 
 # ── Tab: Neu anlegen ─────────────────────────────────────────────────────────
@@ -269,7 +297,11 @@ with tab_new:
                             threshold=gate_thresh,
                             operator=gate_op,
                         ),
-                        savings_mechanism=SavingsMechanism(formula=formula, unit=formula_unit),
+                        savings_mechanism=BucketNode(
+                            name="root",
+                            node_type="leaf",
+                            mechanism=SavingsMechanism(formula=formula, unit=formula_unit),
+                        ),
                         source=source,
                         confidence=confidence,
                         date=date,

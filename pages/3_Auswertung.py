@@ -13,6 +13,7 @@ from schemas.upgrade_profile import load_instances
 from mediator.werkstatt import GueteflagResult, auto_match_all
 from mediator.integration import evaluate_upgrade, EvaluationResult
 from utils.generate_sample import ensure_sample_exists
+from utils.bucket_tree_ui import render_bucket_tree_readonly
 
 st.set_page_config(page_title="Auswertung", layout="wide")
 
@@ -285,6 +286,30 @@ if n_package > 0:
             f"liegt im Grenzfall-Bereich ({resolved.feasibility_gate.threshold:.0f}–"
             f"{resolved.feasibility_gate.threshold*1.5:.0f} m/h)"
         )
+
+st.divider()
+
+# ── Caveats / Bucket-Baum ──────────────────────────────────────────────────────
+st.subheader("Caveats & Bucket-Baum")
+any_caveats = any(r.caveats for r in results)
+if any_caveats:
+    for r in results:
+        if r.caveats:
+            st.markdown(f"**{r.machine_id}**")
+            for caveat in r.caveats:
+                st.warning(caveat)
+else:
+    st.success("Keine fehlenden Buckets — Bucket-Baum vollstaendig ausgewertet.")
+
+with st.expander("Bucket-Baum je Maschine (read-only)"):
+    tree_machine = st.selectbox(
+        "Maschine", [r.machine_id for r in results], key="tree_machine_select",
+    )
+    tree_result = next((r for r in results if r.machine_id == tree_machine), None)
+    if tree_result and tree_result.bucket_tree:
+        render_bucket_tree_readonly(resolved.savings_mechanism, tree_result.bucket_tree)
+    else:
+        st.info("Kein Baum verfuegbar (out_of_scope — Gate-Dimension nicht operationalisierbar).")
 
 st.divider()
 
