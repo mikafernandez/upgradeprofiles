@@ -31,6 +31,7 @@ class SavingsMechanism(BaseModel):
     formula: str
     factors: list[Factor] = []
     unit: str = "EUR/year"
+    output_bucket: str = ""  # Kontenrahmen-Pfad (z.B. "cost.opex.energy"); "" = Entwurf, noch nicht zugeordnet
 
 
 class Synergy(BaseModel):
@@ -41,15 +42,40 @@ class Synergy(BaseModel):
 
 class AggregationOperator(str, Enum):
     # Grabisch et al. (2009), Aggregation Functions, als Taxonomie-Anker für additive
-    # vs. boolesche vs. gewichtete Kombination
+    # vs. gewichtete Kombination kompensatorischer Werte-Buckets
     SUM = "sum"
-    AND_GATE = "and_gate"
     PROPORTIONAL_SCALE = "proportional_scale"
+
+
+class ModifierKind(str, Enum):
+    VETO_HARD = "veto_hard"
+    VETO_SCALED = "veto_scaled"
+    SYNERGY_MULTIPLIER = "synergy_multiplier"
+
+
+class EdgeModifier(BaseModel):
+    """Modifikator auf der Kante von einem BucketNode zu seinem Elternknoten.
+    Feiner als das globale FeasibilityGate: daempft gezielt einen Ast, statt die
+    gesamte Auswertung zu blockieren. Beide Konzepte bestehen nebeneinander."""
+    kind: ModifierKind
+    gate: FeasibilityGate | None = None    # Bedingung fuer veto_hard/veto_scaled
+    factor: float | None = None            # Multiplikator fuer synergy_multiplier (z.B. 0.7 = 30% Reduktion)
+    with_upgrade: str | None = None        # Provenance bei Synergie: welches Upgrade sie ausloest
+    description: str = ""
+
+    @model_validator(mode="after")
+    def _check_shape(self) -> "EdgeModifier":
+        if self.kind in (ModifierKind.VETO_HARD, ModifierKind.VETO_SCALED) and self.gate is None:
+            raise ValueError(f"EdgeModifier {self.kind.value} benoetigt gate")
+        if self.kind == ModifierKind.SYNERGY_MULTIPLIER and self.factor is None:
+            raise ValueError("EdgeModifier synergy_multiplier benoetigt factor")
+        return self
 
 
 # yaml.dump (Standard-Dumper, siehe save_profile_yaml) findet ohne diesen Representer keine
 # passende Serialisierung fuer die Enum-Instanz und faellt auf ein !!python/object-Tag zurueck.
 yaml.add_representer(AggregationOperator, lambda dumper, data: dumper.represent_str(data.value))
+yaml.add_representer(ModifierKind, lambda dumper, data: dumper.represent_str(data.value))
 
 
 class BucketNode(BaseModel):
@@ -64,6 +90,7 @@ class BucketNode(BaseModel):
     mechanism: SavingsMechanism | None = None      # nur bei leaf
     operator: AggregationOperator | None = None    # nur bei branch
     children: list[BucketNode] = []                # nur bei branch
+    edge_modifier: EdgeModifier | None = None      # Modifikator auf der Kante zum Elternknoten
 
     @model_validator(mode="before")
     @classmethod
@@ -105,6 +132,65 @@ def bucket_display_formula(node: BucketNode) -> str:
     return f"[Bucket-Baum, {bucket_leaf_count(node)} Blaetter, Operator {node.operator.value}]"
 
 
+# Fixierter Wurzelschnitt fuer Block E (savings_mechanism), angelehnt an VDI 2884.
+# Block C (component/installation/disposal_cost_eur) bleibt bewusst ein flaches Skalarfeld
+# und wird NICHT in diesen Baum ueberfuehrt (siehe Auftragsdokument, Abschnitt 2.5).
+KONTENRAHMEN_CAPEX = ["cost.capex.component", "cost.capex.installation_base", "cost.capex.disposal_prev"]
+KONTENRAHMEN_OPEX = ["cost.opex.energy", "cost.opex.maintenance", "cost.opex.downtime"]
+
+
+def build_kontenrahmen_skeleton() -> BucketNode:
+    """Fixierter Wurzelschnitt: root -> cost -> {capex, opex} -> je drei leere Hauptklassen-Aeste."""
+    def _empty_branch(name: str) -> BucketNode:
+        return BucketNode(name=name, node_type="branch", operator=AggregationOperator.SUM, children=[])
+
+    capex = BucketNode(
+        name="capex", node_type="branch", operator=AggregationOperator.SUM,
+        children=[_empty_branch(p.rsplit(".", 1)[-1]) for p in KONTENRAHMEN_CAPEX],
+    )
+    opex = BucketNode(
+        name="opex", node_type="branch", operator=AggregationOperator.SUM,
+        children=[_empty_branch(p.rsplit(".", 1)[-1]) for p in KONTENRAHMEN_OPEX],
+    )
+    cost = BucketNode(name="cost", node_type="branch", operator=AggregationOperator.SUM, children=[capex, opex])
+    return BucketNode(name="root", node_type="branch", operator=AggregationOperator.SUM, children=[cost])
+
+
+def list_output_bucket_options() -> list[str]:
+    """Flache Liste aller fixen Hauptklassen-Pfade, fuer Dropdown in der UI."""
+    return KONTENRAHMEN_CAPEX + KONTENRAHMEN_OPEX
+
+
+def attach_mechanism_to_bucket(
+    root: BucketNode, output_bucket: str, leaf_name: str,
+    mechanism: SavingsMechanism, edge_modifier: EdgeModifier | None = None,
+) -> BucketNode:
+    """Haengt ein neues Blatt unter den durch output_bucket bezeichneten Ast.
+    output_bucket darf ein fixer Pfad sein (z.B. 'cost.opex.energy') oder ein freier
+    Unterpfad davon (z.B. 'cost.opex.energy.idle_share'); im zweiten Fall werden
+    fehlende Zwischenaeste mit operator=sum automatisch angelegt."""
+    segments = [s for s in output_bucket.split(".") if s]
+    if not segments:
+        raise ValueError("output_bucket darf nicht leer sein")
+
+    def walk(node: BucketNode, remaining: list[str]) -> BucketNode:
+        if not remaining:
+            leaf = BucketNode(name=leaf_name, node_type="leaf", mechanism=mechanism, edge_modifier=edge_modifier)
+            return node.model_copy(update={"children": list(node.children) + [leaf]})
+        head, rest = remaining[0], remaining[1:]
+        children = list(node.children)
+        for i, child in enumerate(children):
+            if child.name == head:
+                children[i] = walk(child, rest)
+                return node.model_copy(update={"children": children})
+        new_branch = walk(
+            BucketNode(name=head, node_type="branch", operator=AggregationOperator.SUM, children=[]), rest,
+        )
+        return node.model_copy(update={"children": children + [new_branch]})
+
+    return walk(root, segments)
+
+
 class UpgradeProfile(BaseModel):
     """
     Familie-Profil: Generische, baureihenunabhaengige Beschreibung eines Upgrade-Mechanismus.
@@ -142,6 +228,12 @@ class UpgradeProfile(BaseModel):
     confidence: float = 0.5
     date: str = ""
     notes: str = ""
+
+    @model_validator(mode="after")
+    def _check_root_edge_modifier(self) -> "UpgradeProfile":
+        if self.savings_mechanism.edge_modifier is not None:
+            raise ValueError("edge_modifier ist an der Wurzel von savings_mechanism nicht erlaubt")
+        return self
 
     @property
     def total_investment(self) -> float:

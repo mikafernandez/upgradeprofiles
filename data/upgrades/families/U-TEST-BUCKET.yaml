@@ -1,80 +1,142 @@
 id: U-TEST-BUCKET
 name: Test-Upgrade Bucket-Baum (Regressionsfall)
-version: "1.0"
+version: '1.0'
 domain: construction_machinery
 status: draft
-description: >
-  Kuenstliches Test-Profil fuer den MECE-Bucket-Baum. Kein reales Upgrade-Konzept,
-  dient ausschliesslich der Verifikation der Caveat-Propagation bei teilweise
-  fehlenden Daten (siehe test_smoke.py). Zwei Buckets unter operator=sum:
-  ein Bucket ist rein aus Marktparametern loesbar, der zweite referenziert eine
-  Dimension ('maintenance_interval_h'), die bewusst weder in der Sample-Telemetrie
-  noch in PROXY_RULES auftaucht und daher immer als RED/nicht operationalisierbar
-  gematcht wird.
+description: 'Kuenstliches Test-Profil fuer den MECE-Werte-Bucket-Baum. Kein reales
+  Upgrade-Konzept, dient ausschliesslich der Verifikation der Caveat-Propagation
+  bei teilweise fehlenden Daten (siehe test_smoke.py). Zwei Blaetter im Kontenrahmen:
+  co2_bucket unter cost.opex.energy ist rein aus Marktparametern loesbar, wartung_bucket
+  unter cost.opex.maintenance referenziert eine Dimension (''maintenance_interval_h''),
+  die bewusst weder in der Sample-Telemetrie noch in PROXY_RULES auftaucht und daher
+  immer als RED/nicht operationalisierbar gematcht wird.
 
+  '
 components: []
 interfaces: []
 performance_delta: {}
-
 component_cost_eur: 1000.0
 installation_cost_eur: 100.0
 disposal_cost_eur: 0.0
-
 feasibility_gate:
-  condition_description: "Aktionsradius <= 1000 m/h (bewusst unkritisch fuer diesen Testfall)"
+  condition_description: Aktionsradius <= 1000 m/h (bewusst unkritisch fuer diesen
+    Testfall)
   dimension_ref: hourly_distance
   threshold: 1000.0
-  operator: "<="
-
+  operator: <=
 savings_mechanism:
   name: root
   node_type: branch
+  mechanism: null
   operator: sum
   children:
-    - name: co2_bucket
-      node_type: leaf
-      mechanism:
-        formula: "co2_price_eur_t * 10.0"
-        factors:
-          - name: co2_price_eur_t
-            dimension_ref: co2_price_eur_t
-            description: CO2-Preis (Marktparameter, immer verfuegbar)
-        unit: EUR/year
-    - name: wartung_bucket
-      node_type: leaf
-      mechanism:
-        formula: "maintenance_interval_h * 5.0"
-        factors:
-          - name: maintenance_interval_h
-            dimension_ref: maintenance_interval_h
-            description: Wartungsintervall — bewusst kein Signal verfuegbar (Testfall)
-        unit: EUR/year
-
+  - name: cost
+    node_type: branch
+    mechanism: null
+    operator: sum
+    children:
+    - name: capex
+      node_type: branch
+      mechanism: null
+      operator: sum
+      children:
+      - name: component
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children: []
+        edge_modifier: null
+      - name: installation_base
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children: []
+        edge_modifier: null
+      - name: disposal_prev
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children: []
+        edge_modifier: null
+      edge_modifier: null
+    - name: opex
+      node_type: branch
+      mechanism: null
+      operator: sum
+      children:
+      - name: energy
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children:
+        - name: co2_bucket
+          node_type: leaf
+          mechanism:
+            formula: co2_price_eur_t * 10.0
+            factors:
+            - name: co2_price_eur_t
+              dimension_ref: co2_price_eur_t
+              description: CO2-Preis (Marktparameter, immer verfuegbar)
+            unit: EUR/year
+            output_bucket: cost.opex.energy
+          operator: null
+          children: []
+          edge_modifier: null
+        edge_modifier: null
+      - name: maintenance
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children:
+        - name: wartung_bucket
+          node_type: leaf
+          mechanism:
+            formula: maintenance_interval_h * 5.0
+            factors:
+            - name: maintenance_interval_h
+              dimension_ref: maintenance_interval_h
+              description: Wartungsintervall — bewusst kein Signal verfuegbar (Testfall)
+            unit: EUR/year
+            output_bucket: cost.opex.maintenance
+          operator: null
+          children: []
+          edge_modifier: null
+        edge_modifier: null
+      - name: downtime
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children: []
+        edge_modifier: null
+      edge_modifier: null
+    edge_modifier: null
+  edge_modifier: null
 requires: []
 excludes: []
 synergies: []
-
 data_dimensions:
-  - name: hourly_distance
-    kind: EC
-    unit: m/h
-    resolution: L3
-    description: Feasibility-Gate-Dimension, ueber Proxy aus Fahrgeschwindigkeiten matchbar.
-  - name: co2_price_eur_t
-    kind: context
-    unit: EUR/t
-    resolution: L0
-    description: Globalparameter aus market_params.yaml, immer verfuegbar.
-  - name: maintenance_interval_h
-    kind: EC
-    unit: h
-    resolution: L2
-    description: >
-      Bewusst nicht in PROXY_RULES/Sample-Telemetrie vorhanden — matched immer RED,
-      damit dieser Ast als 'missing' propagiert und im Caveat sichtbar wird.
+- name: hourly_distance
+  kind: EC
+  unit: m/h
+  resolution: L3
+  description: Feasibility-Gate-Dimension, ueber Proxy aus Fahrgeschwindigkeiten matchbar.
+- name: co2_price_eur_t
+  kind: context
+  unit: EUR/t
+  resolution: L0
+  description: Globalparameter aus market_params.yaml, immer verfuegbar.
+- name: maintenance_interval_h
+  kind: EC
+  unit: h
+  resolution: L2
+  description: 'Bewusst nicht in PROXY_RULES/Sample-Telemetrie vorhanden — matched
+    immer RED, damit dieser Ast als ''missing'' propagiert und im Caveat sichtbar
+    wird.
 
+    '
 source: Test-Fixture (kein reales Upgrade-Konzept)
 confidence: 0.0
-date: "2026-07-05"
-notes: >
-  Nur fuer test_smoke.py / manuelle UI-Verifikation der Bucket-Baum-Caveats.
+date: '2026-07-05'
+notes: 'Nur fuer test_smoke.py / manuelle UI-Verifikation der Bucket-Baum-Caveats.
+
+  '

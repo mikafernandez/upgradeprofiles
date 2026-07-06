@@ -1,0 +1,10 @@
+id: U-DEMO-BETREUER::DEMOM
+family_id: U-DEMO-BETREUER
+machine_model: DEMOM
+overrides:
+  component_cost_eur: 20000.0
+  installation_cost_eur: 1500.0
+instance_values:
+  fuel_rate_l_h: 3.5
+  engine_kw: 18.0
+notes: ''

@@ -1,107 +1,173 @@
 id: U-ELEC-CABLE
 name: Antriebselektrifizierung (Kabel)
-version: "1.0"
+version: '1.0'
 domain: construction_machinery
 status: draft
-description: >
-  Ersatz des Dieselantriebs durch Elektromotor und Leistungselektronik fuer
-  kabelgebundenen Betrieb. Setzt stationaeres oder schwach mobiles Einsatzprofil
+description: 'Ersatz des Dieselantriebs durch Elektromotor und Leistungselektronik
+  fuer kabelgebundenen Betrieb. Setzt stationaeres oder schwach mobiles Einsatzprofil
   voraus (Aktionsradius <= 200 m/h). Eliminiert operative CO2-Emissionen vollstaendig.
 
+  '
 components:
-  - Elektromotor (AC-Asynchron oder PMSM, baureihenabhaengig)
-  - Umrichter / Frequenzumformer
-  - Kabelmanagement-System (Trommel und Fuehrungsschiene)
-  - Leistungsschnittstelle (CEE 63A oder Industriestecker)
-
+- Elektromotor (AC-Asynchron oder PMSM, baureihenabhaengig)
+- Umrichter / Frequenzumformer
+- Kabelmanagement-System (Trommel und Fuehrungsschiene)
+- Leistungsschnittstelle (CEE 63A oder Industriestecker)
 interfaces:
-  - "Mechanical: Flanschanbindung an vorhandenen Antriebsstrang"
-  - "Electrical: 400V / 63A Drehstromnetz (stationaere Einspeisung)"
-  - "Control: CAN-Bus Anbindung an Fahrzeugsteuerung"
-
+- 'Mechanical: Flanschanbindung an vorhandenen Antriebsstrang'
+- 'Electrical: 400V / 63A Drehstromnetz (stationaere Einspeisung)'
+- 'Control: CAN-Bus Anbindung an Fahrzeugsteuerung'
 performance_delta:
-  noise_dba: "-15 bis -20 dB(A) (Abhaengig von Betriebspunkt)"
-  co2_operational: "-100% (betrieblich, Scope 1)"
-  torque_low_speed: "+ca. 20% gegenueber Diesel (E-Motor Kennlinie)"
-
+  noise_dba: -15 bis -20 dB(A) (Abhaengig von Betriebspunkt)
+  co2_operational: -100% (betrieblich, Scope 1)
+  torque_low_speed: +ca. 20% gegenueber Diesel (E-Motor Kennlinie)
 component_cost_eur: 35000.0
 installation_cost_eur: 2500.0
 disposal_cost_eur: 600.0
-
 feasibility_gate:
-  condition_description: "Mittlerer Aktionsradius der Maschine <= 200 m/h"
+  condition_description: Mittlerer Aktionsradius der Maschine <= 200 m/h
   dimension_ref: hourly_distance
   threshold: 200.0
-  operator: "<="
-
+  operator: <=
 savings_mechanism:
-  formula: "op_hours_year * fuel_rate_l_h * (diesel_price_eur_l - electricity_equiv_eur_l)"
-  factors:
-    - name: op_hours_year
-      dimension_ref: op_hours_year
-      description: Jaehrliche Betriebsstunden (aus Nutzungsdaten)
-    - name: fuel_rate_l_h
-      dimension_ref: fuel_rate_l_h
-      description: Kraftstoffverbrauch im Lastbetrieb (baureihenspezifischer Festwert)
-    - name: diesel_price_eur_l
-      dimension_ref: diesel_price_eur_l
-      description: Dieselpreis in EUR/Liter (Marktparameter)
-    - name: electricity_equiv_eur_l
-      dimension_ref: electricity_equiv_eur_l
-      description: Aequivalenter Stromkostenpreis in EUR/Liter-Dieselaequivalent
-  unit: EUR/year
-
+  name: root
+  node_type: branch
+  mechanism: null
+  operator: sum
+  children:
+  - name: cost
+    node_type: branch
+    mechanism: null
+    operator: sum
+    children:
+    - name: capex
+      node_type: branch
+      mechanism: null
+      operator: sum
+      children:
+      - name: component
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children: []
+        edge_modifier: null
+      - name: installation_base
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children: []
+        edge_modifier: null
+      - name: disposal_prev
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children: []
+        edge_modifier: null
+      edge_modifier: null
+    - name: opex
+      node_type: branch
+      mechanism: null
+      operator: sum
+      children:
+      - name: energy
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children:
+        - name: kraftstoff_einsparung
+          node_type: leaf
+          mechanism:
+            formula: op_hours_year * fuel_rate_l_h * (diesel_price_eur_l - electricity_equiv_eur_l)
+            factors:
+            - name: op_hours_year
+              dimension_ref: op_hours_year
+              description: Jaehrliche Betriebsstunden (aus Nutzungsdaten)
+            - name: fuel_rate_l_h
+              dimension_ref: fuel_rate_l_h
+              description: Kraftstoffverbrauch im Lastbetrieb (baureihenspezifischer
+                Festwert)
+            - name: diesel_price_eur_l
+              dimension_ref: diesel_price_eur_l
+              description: Dieselpreis in EUR/Liter (Marktparameter)
+            - name: electricity_equiv_eur_l
+              dimension_ref: electricity_equiv_eur_l
+              description: Aequivalenter Stromkostenpreis in EUR/Liter-Dieselaequivalent
+            unit: EUR/year
+            output_bucket: cost.opex.energy
+          operator: null
+          children: []
+          edge_modifier: null
+        edge_modifier: null
+      - name: maintenance
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children: []
+        edge_modifier: null
+      - name: downtime
+        node_type: branch
+        mechanism: null
+        operator: sum
+        children: []
+        edge_modifier: null
+      edge_modifier: null
+    edge_modifier: null
+  edge_modifier: null
 requires: []
 excludes: []
 synergies:
-  - with_upgrade: U-MINIBATT
-    type: enabling
-    description: >
-      U-MINIBATT erweitert effektiven Aktionsradius auf ~350 m/h durch Pufferbatterie.
-      Ermoeglicht Einsatz fuer Grenzfall-Maschinen (200-350 m/h Aktionsradius).
+- with_upgrade: U-MINIBATT
+  type: enabling
+  description: 'U-MINIBATT erweitert effektiven Aktionsradius auf ~350 m/h durch Pufferbatterie.
+    Ermoeglicht Einsatz fuer Grenzfall-Maschinen (200-350 m/h Aktionsradius).
 
+    '
 data_dimensions:
-  - name: hourly_distance
-    kind: EC
-    unit: m/h
-    resolution: L3
-    description: >
-      Mittlerer Aktionsradius der Maschine pro Betriebsstunde.
-      Primaeere Soll-Groesse fuer Feasibility Gate. Kein Direktsignal vorhanden;
-      muss via Proxy aus Fahrgeschwindigkeiten abgeleitet werden.
-  - name: op_hours_year
-    kind: EC
-    unit: h/year
-    resolution: L1
-    description: >
-      Jaehrliche Betriebsstunden. Aggregiert aus Tagesdaten.
-      Direktmatch moeglich wenn Betriebsstundenzaehler im Datensatz vorhanden.
-  - name: fuel_rate_l_h
-    kind: instance
-    unit: L/h
-    resolution: L1
-    description: >
-      Kraftstoffverbrauch bei Nennlast. Baureihenspezifischer Festwert;
-      kommt aus Instanz-Profil (instance_values), nicht aus Telemetrie.
-  - name: diesel_price_eur_l
-    kind: context
-    unit: EUR/L
-    resolution: L0
-    description: Aktueller Dieselpreis. Globalparameter aus market_params.yaml.
-  - name: electricity_equiv_eur_l
-    kind: context
-    unit: EUR/L
-    resolution: L0
-    description: >
-      Aequivalenter Stromkostenpreis in Diesel-Einheiten (EUR/Liter-Aequivalent).
-      Berechnungsgrundlage: Strompreis [EUR/kWh] / spezifischer Energiegehalt Diesel.
-      Globalparameter aus market_params.yaml.
+- name: hourly_distance
+  kind: EC
+  unit: m/h
+  resolution: L3
+  description: 'Mittlerer Aktionsradius der Maschine pro Betriebsstunde. Primaeere
+    Soll-Groesse fuer Feasibility Gate. Kein Direktsignal vorhanden; muss via Proxy
+    aus Fahrgeschwindigkeiten abgeleitet werden.
 
+    '
+- name: op_hours_year
+  kind: EC
+  unit: h/year
+  resolution: L1
+  description: 'Jaehrliche Betriebsstunden. Aggregiert aus Tagesdaten. Direktmatch
+    moeglich wenn Betriebsstundenzaehler im Datensatz vorhanden.
+
+    '
+- name: fuel_rate_l_h
+  kind: instance
+  unit: L/h
+  resolution: L1
+  description: 'Kraftstoffverbrauch bei Nennlast. Baureihenspezifischer Festwert;
+    kommt aus Instanz-Profil (instance_values), nicht aus Telemetrie.
+
+    '
+- name: diesel_price_eur_l
+  kind: context
+  unit: EUR/L
+  resolution: L0
+  description: Aktueller Dieselpreis. Globalparameter aus market_params.yaml.
+- name: electricity_equiv_eur_l
+  kind: context
+  unit: EUR/L
+  resolution: L0
+  description: 'Aequivalenter Stromkostenpreis in Diesel-Einheiten (EUR/Liter-Aequivalent).
+    Berechnungsgrundlage: Strompreis [EUR/kWh] / spezifischer Energiegehalt Diesel.
+    Globalparameter aus market_params.yaml.
+
+    '
 source: Konzeptentwurf KIT wbk / Masterarbeit Mika F.
 confidence: 0.6
-date: "2025-06-01"
-notes: >
-  Erster validierter Familie-Steckbrief. Kostangaben sind Richtwerte fuer Baggerklasse 1-5t.
-  Instanzen (z.B. EZ17, EW100) ueberschreiben mit echten Herstellerdaten.
-  Offene Frage: Feasibility-Gate-Schwellenwert 200 m/h ist provisorisch;
-  Validierung mit realem Flottendatensatz steht aus.
+date: '2025-06-01'
+notes: 'Erster validierter Familie-Steckbrief. Kostangaben sind Richtwerte fuer Baggerklasse
+  1-5t. Instanzen (z.B. EZ17, EW100) ueberschreiben mit echten Herstellerdaten. Offene
+  Frage: Feasibility-Gate-Schwellenwert 200 m/h ist provisorisch; Validierung mit
+  realem Flottendatensatz steht aus.
+
+  '

@@ -1,7 +1,9 @@
 from __future__ import annotations
 import pandas as pd
 from pydantic import BaseModel
-from schemas.upgrade_profile import UpgradeProfile, UpgradeInstance, BucketNode, AggregationOperator
+from schemas.upgrade_profile import (
+    UpgradeProfile, UpgradeInstance, BucketNode, AggregationOperator, ModifierKind, FeasibilityGate,
+)
 from mediator.werkstatt import GueteflagResult, FLAG_CONFIDENCE
 
 
@@ -30,11 +32,14 @@ class BucketEvalResult(BaseModel):
     value: float = 0.0
     missing: bool = False
     reason: str | None = None
-    unknown: bool = False              # and_gate: unentscheidbar (nie hart auf False gesetzt)
+    unknown: bool = False              # aktuell von keinem Operator gesetzt; reserviert fuer unentscheidbare Aggregationen
     partial_coverage: bool = False
     coverage: float = 1.0
     missing_children: list[str] = []
     children: list["BucketEvalResult"] = []
+    modifier_applied: str | None = None    # Anzeigetext des Kanten-Modifikators, z.B. "veto_scaled: 70% Abdeckung"
+    veto_blocked: bool = False             # True wenn veto_hard die Kante auf 0 gesetzt hat
+    raw_value: float | None = None         # Wert vor Anwendung des Kanten-Modifikators
 
 
 BucketEvalResult.model_rebuild()
@@ -66,6 +71,25 @@ def _compute_hourly_distance(machine_df: pd.DataFrame) -> float:
         daily = (machine_df[left] + machine_df[right]).abs() / 2 * 3600
         return float(daily.mean())
     return 0.0
+
+
+def _compute_hourly_distance_series(machine_df: pd.DataFrame) -> pd.Series:
+    left = "track_speed_left_ms"
+    right = "track_speed_right_ms"
+    if left in machine_df.columns and right in machine_df.columns:
+        return (machine_df[left] + machine_df[right]).abs() / 2 * 3600
+    return pd.Series(dtype=float)
+
+
+def _compute_gate_coverage(gate: FeasibilityGate, machine_df: pd.DataFrame) -> float | None:
+    """Anteil des Lastkollektivs (Telemetrie-Zeilen der Maschine), der die Gate-Bedingung
+    erfuellt. None wenn die Dimension nicht zeilenweise berechenbar ist (kein Proxy verfuegbar)."""
+    if gate.dimension_ref != "hourly_distance":
+        return None
+    series = _compute_hourly_distance_series(machine_df)
+    if series.empty:
+        return None
+    return float(series.apply(lambda v: _apply_operator(v, gate.operator, gate.threshold)).mean())
 
 
 def _compute_op_hours_year(machine_df: pd.DataFrame) -> float:
@@ -116,6 +140,74 @@ def _evaluate_leaf(
     return BucketEvalResult(name=node.name, node_type="leaf", value=value)
 
 
+def _apply_edge_modifier(
+    node: BucketNode,
+    result: BucketEvalResult,
+    dim_lookup: dict[str, str],
+    werkstatt_mappings: dict[str, GueteflagResult],
+    machine_df: pd.DataFrame,
+    context_params: dict,
+) -> BucketEvalResult:
+    """Wendet node.edge_modifier (falls gesetzt) auf das Auswertungs-Ergebnis der Kante
+    von node zu seinem Elternknoten an, vor der Aggregation im Elternknoten."""
+    modifier = node.edge_modifier
+    if modifier is None:
+        return result
+
+    raw_value = result.value
+
+    if modifier.kind == ModifierKind.SYNERGY_MULTIPLIER:
+        factor = modifier.factor if modifier.factor is not None else 1.0
+        applied = f"synergy_multiplier x{factor:.2f}"
+        if modifier.with_upgrade:
+            applied += f" (mit {modifier.with_upgrade})"
+        return result.model_copy(update={
+            "value": raw_value * factor, "raw_value": raw_value, "modifier_applied": applied,
+        })
+
+    gate = modifier.gate
+    if gate is None:
+        return result
+
+    gate_kind = dim_lookup.get(gate.dimension_ref)
+    if gate_kind == "EC":
+        mapping = werkstatt_mappings.get(gate.dimension_ref)
+        if mapping is None or mapping.flag == "RED":
+            return result.model_copy(update={
+                "raw_value": raw_value,
+                "modifier_applied": (
+                    f"{modifier.kind.value}: Gate-Dimension '{gate.dimension_ref}' "
+                    "nicht operationalisierbar, Kante ungedaempft"
+                ),
+            })
+
+    if modifier.kind == ModifierKind.VETO_HARD:
+        gate_value = (
+            _compute_hourly_distance(machine_df) if gate.dimension_ref == "hourly_distance"
+            else context_params.get(gate.dimension_ref, 0.0)
+        )
+        if _apply_operator(gate_value, gate.operator, gate.threshold):
+            return result.model_copy(update={"raw_value": raw_value, "modifier_applied": "veto_hard: Bedingung erfuellt"})
+        return result.model_copy(update={
+            "value": 0.0, "raw_value": raw_value, "veto_blocked": True,
+            "modifier_applied": f"veto_hard: Bedingung nicht erfuellt ({gate.condition_description})",
+        })
+
+    if modifier.kind == ModifierKind.VETO_SCALED:
+        coverage = _compute_gate_coverage(gate, machine_df)
+        if coverage is None:
+            return result.model_copy(update={
+                "raw_value": raw_value,
+                "modifier_applied": "veto_scaled: Abdeckung nicht berechenbar, Kante ungedaempft",
+            })
+        return result.model_copy(update={
+            "value": raw_value * coverage, "raw_value": raw_value,
+            "modifier_applied": f"veto_scaled: {coverage:.0%} Abdeckung",
+        })
+
+    return result
+
+
 def _evaluate_bucket_node(
     node: BucketNode,
     dim_lookup: dict[str, str],
@@ -127,10 +219,11 @@ def _evaluate_bucket_node(
     if node.node_type == "leaf":
         return _evaluate_leaf(node, dim_lookup, werkstatt_mappings, machine_df, instance_values, context_params)
 
-    children = [
-        _evaluate_bucket_node(c, dim_lookup, werkstatt_mappings, machine_df, instance_values, context_params)
-        for c in node.children
-    ]
+    children = []
+    for c in node.children:
+        child_result = _evaluate_bucket_node(c, dim_lookup, werkstatt_mappings, machine_df, instance_values, context_params)
+        child_result = _apply_edge_modifier(c, child_result, dim_lookup, werkstatt_mappings, machine_df, context_params)
+        children.append(child_result)
     missing_children = [c.name for c in children if c.missing or c.missing_children or c.unknown]
 
     if node.operator == AggregationOperator.SUM:
@@ -139,15 +232,6 @@ def _evaluate_bucket_node(
             name=node.name, node_type="branch", value=value,
             missing_children=missing_children, children=children,
         )
-
-    if node.operator == AggregationOperator.AND_GATE:
-        if missing_children:
-            return BucketEvalResult(
-                name=node.name, node_type="branch", value=0.0, unknown=True,
-                missing_children=missing_children, children=children,
-            )
-        value = 1.0 if children and all(bool(c.value) for c in children) else 0.0
-        return BucketEvalResult(name=node.name, node_type="branch", value=value, children=children)
 
     if node.operator == AggregationOperator.PROPORTIONAL_SCALE:
         known = [c for c in children if not (c.missing or c.missing_children or c.unknown)]
@@ -167,6 +251,12 @@ def _collect_caveats(result: BucketEvalResult) -> list[str]:
     caveats: list[str] = []
 
     def walk(n: BucketEvalResult) -> None:
+        if n.modifier_applied and (n.veto_blocked or (n.raw_value is not None and abs(n.raw_value - n.value) > 1e-9)):
+            detail = f"{n.name}: {n.modifier_applied}"
+            if n.raw_value is not None:
+                detail += f" (Rohwert {n.raw_value:,.0f} -> {n.value:,.0f} EUR/Jahr)"
+            caveats.append(detail)
+
         if n.node_type == "leaf":
             if n.missing:
                 caveats.append(f"{n.name}: nicht eingepreist – {n.reason}")
